@@ -21,12 +21,18 @@ ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ENV RCUTILS_COLORIZED_OUTPUT=1
 
 # Clone Humble Dataspeed repos, to be compiled in Jazzy
-RUN git clone https://bitbucket.org/DataspeedInc/dataspeed_can.git $ROS_WS/src/ \
- && git clone https://bitbucket.org/DataspeedInc/dbw_ros.git $ROS_WS/dbw_ros
+RUN git clone https://bitbucket.org/DataspeedInc/dataspeed_can.git /opt/dataspeed_can \
+ && git clone https://bitbucket.org/DataspeedInc/dbw_ros.git /opt/dbw_ros
 
 # Move to src only necessary pkgs
-RUN mv $ROS_WS/dbw_ros/dbw1/dataspeed_* $ROS_WS/src/ \
- && mv $ROS_WS/dbw_ros/dbw1/dbw_ford_* $ROS_WS/src/
+RUN mkdir -p $ROS_WS/src \
+ && mv /opt/dataspeed_can/dataspeed_can_msg_filters $ROS_WS/src/ \
+ && mv /opt/dataspeed_can/dataspeed_can_usb $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dataspeed_dbw_common $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dataspeed_ulc_can $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dataspeed_ulc_msgs $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dbw_ford_can $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dbw_ford_msgs $ROS_WS/src/
 
 # Install dependencies via rosdep
 RUN apt-get update \
@@ -39,7 +45,7 @@ RUN apt-get update \
 FROM base AS prebuilt
 
 # Import Five DBW code into docker image
-COPY av_dbw_launch $ROS_WS/src/
+COPY av_dbw_launch $ROS_WS/src/av_dbw_launch
 
 # Source ROS setup for dependencies and build our code
 RUN . /opt/ros/"$ROS_DISTRO"/setup.sh \
