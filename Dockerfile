@@ -1,4 +1,4 @@
-FROM ros:humble-ros-base-jammy AS base
+FROM ros:jazzy-ros-base-noble AS base
 
 # Install basic dev tools (And clean apt cache afterwards)
 RUN apt-get update \
@@ -8,24 +8,6 @@ RUN apt-get update \
         curl \
         # Install Zenoh ROS2 RMW
         ros-"$ROS_DISTRO"-rmw-zenoh-cpp \
-    && rm -rf /var/lib/apt/lists/*
-
-# Setup Dataspeed apt
-RUN curl -sSL https://bitbucket.org/DataspeedInc/ros_binaries/raw/master/dataspeed.key -o /usr/share/keyrings/dataspeed-archive-keyring.gpg \
-    && sh -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/dataspeed-archive-keyring.gpg] http://packages.dataspeedinc.com/ros2/ubuntu \
-    $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2-dataspeed-public.list > /dev/null'
-
-# Setup Dataspeed rosdep
-RUN sh -c "echo \"yaml http://packages.dataspeedinc.com/ros2/ros-public-\$ROS_DISTRO.yaml \$ROS_DISTRO\" \
-    > /etc/ros/rosdep/sources.list.d/30-dataspeed-public-\$ROS_DISTRO.list"
-
-
-# Install Dataspeed Ford Drive-By-Wire ROS driver
-RUN apt-get update \
-    && rosdep update \
-    && DEBIAN_FRONTEND=noninteractive \
-        apt-get -y --quiet --no-install-recommends install \
-        ros-"$ROS_DISTRO"-dbw-ford \
     && rm -rf /var/lib/apt/lists/*
 
 # Setup ROS workspace folder
@@ -38,12 +20,32 @@ ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Enable ROS log colorised output
 ENV RCUTILS_COLORIZED_OUTPUT=1
 
+# Clone Humble Dataspeed repos, to be compiled in Jazzy
+RUN git clone https://bitbucket.org/DataspeedInc/dataspeed_can.git /opt/dataspeed_can \
+ && git clone https://bitbucket.org/DataspeedInc/dbw_ros.git /opt/dbw_ros
+
+# Move to src only necessary pkgs
+RUN mkdir -p $ROS_WS/src \
+ && mv /opt/dataspeed_can/dataspeed_can_msg_filters $ROS_WS/src/ \
+ && mv /opt/dataspeed_can/dataspeed_can_usb $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dataspeed_dbw_common $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dataspeed_ulc_can $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dataspeed_ulc_msgs $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dbw_ford_can $ROS_WS/src/ \
+ && mv /opt/dbw_ros/dbw1/dbw_ford_msgs $ROS_WS/src/
+
+# Install dependencies via rosdep
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive \
+        rosdep install --from-paths src --ignore-src -r -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # -----------------------------------------------------------------------
 
 FROM base AS prebuilt
 
 # Import Five DBW code into docker image
-COPY av_dbw_launch $ROS_WS/src/
+COPY av_dbw_launch $ROS_WS/src/av_dbw_launch
 
 # Source ROS setup for dependencies and build our code
 RUN . /opt/ros/"$ROS_DISTRO"/setup.sh \
@@ -57,8 +59,6 @@ FROM base AS dev
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive \
         apt-get -y --quiet --no-install-recommends install \
-        # Dbw joystick controller
-        ros-"$ROS_DISTRO"-dbw-ford-joystick-demo \
         # Command-line editor
         nano \
         # Ping network tools
